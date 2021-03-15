@@ -1,178 +1,123 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# @Time    : 2019/8/7 20:59
-# @Author  : blvin.Don
-# @File    : test.py
+# 引入所需模块
+import cv2, pyautogui
+import sys
+import numpy as np
+
+# 鼠标框选区域，用于显示鼠标轨迹
+selection = None
+# 框选开始
+drag_start = None
+# 框选完成区域即跟踪目标
+track_window = None
+# 跟踪开始标志
+track_start = False
+# 创建KCF/MIL跟踪器
 
 
-"""
-    This snippet of code executes web requests in parallel using rotating IPs
-    and fake request headers. Configurable params:
-    REFRESH_TIMEOUT - number of seconds to refresh the free IP pool after
-    NUM_WORKERS - number of workers to execute in parallel
-    request_urls - list of urls to request where each item is a tuple of
-                   (url, filename)
-    Reference:
-    https://www.scrapehero.com/how-to-prevent-getting-blacklisted-while-scraping/
-    https://www.scrapehero.com/how-to-fake-and-rotate-user-agents-using-python-3/
-"""
-
-from requests.exceptions import ConnectionError
-from lxml.html import fromstring
-from itertools import cycle
-import concurrent.futures
-import random
-import requests
-import time
-from timeloop import Timeloop
-from datetime import timedelta
-
-PROXIES = []
-PROXY_POOL = None
-NUM_WORKERS = 4
-REFRESH_TIMEOUT = 300  # In seconds
-
-USER_AGENTS = [
-    # Chrome
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 5.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36',
-    # Firefox
-    'Mozilla/4.0 (compatible; MSIE 9.0; Windows NT 6.1)',
-    'Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko',
-    'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)',
-    'Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko',
-    'Mozilla/5.0 (Windows NT 6.2; WOW64; Trident/7.0; rv:11.0) like Gecko',
-    'Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko',
-    'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.0; Trident/5.0)',
-    'Mozilla/5.0 (Windows NT 6.3; WOW64; Trident/7.0; rv:11.0) like Gecko',
-    'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)',
-    'Mozilla/5.0 (Windows NT 6.1; Win64; x64; Trident/7.0; rv:11.0) like Gecko',
-    'Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; WOW64; Trident/6.0)',
-    'Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0)',
-    'Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)'
-]
+def get_image():
+    img = pyautogui.screenshot(region=[470, 0, 900, 425])
+    img = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2BGR)
+    return img
 
 
-def refresh_proxies():
-    def get_new_proxies_list():
-        url = 'https://free-proxy-list.net/'
-        response = requests.get(url)
-        parser = fromstring(response.text)
-        proxies = set()
-        for i in parser.xpath('//tbody/tr')[:20]:
-            if i.xpath('.//td[7][contains(text(),"yes")]'):
-                proxy = ':'.join([i.xpath('.//td[1]/text()')[0], i.xpath('.//td[2]/text()')[0]])
-                proxies.add(proxy)
-        return list(proxies)
-
-    # Get new proxies
-    proxies = get_new_proxies_list()
-    counter = 10
-    # Retry after 1 second, for a maximum of 10 times
-    while not len(proxies) and counter:
-        counter -= 1
-        time.sleep(1)
-        proxies = get_new_proxies_list()
-
-    # Update global variables if successfully obtained new list
-    if len(proxies):
-        global PROXIES, PROXY_POOL
-        PROXIES = proxies
-        PROXY_POOL = cycle(PROXIES)
+# tracker = cv2.TrackerKCF_create()
+# tracker = cv2.TrackerMIL_create()
 
 
-def get_urls():
-    """
-        Example Maven pom file download. Change the implementation of
-        this method to supply a list of urls to request, along with
-        the filenames to use to save the response.
-    """
+tracker = cv2.TrackerTLD_create()
+# tracker = cv2.TrackerMOSSE_create()#效果一般
+# tracker = cv2.TrackerCSRT_create()#效果可以
+# tracker = cv2.TrackerBoosting_create()#效果一般
+# tracker = cv2.TrackerMedianFlow_create()#效果一般
 
-    base_url = 'http://repo1.maven.org/maven2'
-    artifacts = ['org.mobicents.media.client:mgcp-driver:4.2.0.70',
-                 'org.mobicents.media.client:mgcp-driver:4.2.0.71',
-                 'org.mobicents.media.client:mgcp-driver:4.2.0.72',
-                 'org.mobicents.media.client:mgcp-driver:4.2.0.73',
-                 'org.mobicents.media.client:mgcp-driver:4.2.0.74',
-                 'org.mobicents.media.client:mgcp-driver:5.1.0.19',
-                 'org.mobicents.media.client:mgcp-driver:5.1.0.21',
-                 'org.mobicents.media.client:mgcp-driver:5.1.0.23',
-                 'org.mobicents.media.client:mgcp-driver:5.1.0.24',
-                 'org.mobicents.media.client:mgcp-driver:5.1.0.26']
-    urls = []
-    for a in artifacts:
-        group, artifact, version = a.split(':')
-        url = f'{base_url}/{group.replace(".", "/")}/{artifact}/{version}/{artifact}-{version}.pom'
-        filename = f'{group}-{artifact}-{version}.pom'
-        urls.append((url, filename))
-    return urls
+# tracker = cv2.TrackerGOTURN_create()
 
 
-def download(info):
-    try:
-        global PROXY_POOL
-        global USER_AGENTS
-        url, filename = info
-        download_complete = False
-
-        while not download_complete:
-            try:
-                proxy = next(PROXY_POOL)
-                print(f'Downloading {url} using {proxy}')
-                user_agent = random.choice(USER_AGENTS)
-                headers = {'User-Agent': user_agent}
-                response = requests.get(url,
-                                        headers=headers,
-                                        proxies={'http': proxy, 'https': proxy})
-                download_complete = True
-            except ConnectionError:
-                # Bad IP address, retry
-                print(f'Connection error using proxy {proxy}, retrying.')
-            except Exception as e:
-                print(f'Error downloading {filename}: {e}')
-                break
-
-        # Save the response
-        if download_complete:
-            try:
-                with open(filename, 'w+') as f:
-                    f.write(response.text)
-            except Exception as e:
-                print(f'Error saving {filename}: {e}')
-    except Exception as e:
-        print(f'Unexpected Exception: {e}')
+# 鼠标响应函数
+def onmouse(event, x, y, flags, param):
+    global selection, drag_start, track_window, track_start
+    # 鼠标左键按下
+    if event == cv2.EVENT_LBUTTONDOWN:
+        drag_start = (x, y)
+        track_window = None
+    # 开始拖拽
+    if drag_start:
+        xmin = min(x, drag_start[0])
+        ymin = min(y, drag_start[1])
+        xmax = max(x, drag_start[0])
+        ymax = max(y, drag_start[1])
+        selection = (xmin, ymin, xmax, ymax)
+    # 鼠标左键弹起
+    if event == cv2.EVENT_LBUTTONUP:
+        drag_start = None
+        selection = None
+        track_window = (xmin, ymin, xmax - xmin, ymax - ymin)
+        if track_window and track_window[2] > 0 and track_window[3] > 0:
+            track_start = True
+            # 跟踪器以鼠标左键弹起时所在帧和框选区域为参数初始化
+            tracker.init(frame, track_window)
 
 
-# Set up scheduled IP refresh
-tl = Timeloop()
+# 读取视频/摄像头
+# video = cv2.VideoCapture(0)
+# video = cv2.VideoCapture('demo-video-single.avi')
+# video = cv2.VideoCapture('traffic.flv')
+# 命名窗口，第二个参数表示窗口可缩放
+cv2.namedWindow('KCFTracker', cv2.WINDOW_NORMAL)
+# 为窗口绑定鼠标响应函数onmouse
+cv2.setMouseCallback('KCFTracker', onmouse)
 
+# 摄像头未正确打开则退出
+# if not video.isOpened():
+#     print('Could not open video')
+#     sys.exit()
 
-@tl.job(interval=timedelta(seconds=REFRESH_TIMEOUT))
-def scheduled_ip_refresh():
-    refresh_proxies()
-    print('IP List refreshed')
+while True:
+    # 读取当前帧
+    # ok, frame = video.read()
+    frame = get_image()
+    # if not ok:
+    #     break
+    # 以矩形标记鼠标框选区域
+    if selection:
+        x0, y0, x1, y1 = selection
+        cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2, 1)
 
+    # 函数执行开始时间
+    timer = cv2.getTickCount()
 
-if __name__ == '__main__':
-    # Get the URLs to download
-    request_urls = get_urls()
+    # 更新跟踪器得到最新目标区域
+    track_ok = None
+    if track_start:
+        track_ok, bbox = tracker.update(frame)
 
-    refresh_proxies()
-    tl.start()
+    # 计算fps
+    fps = cv2.getTickFrequency() / (cv2.getTickCount() - timer)
 
-    # Download in parallel
-    with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
-        future_names = [executor.submit(download, url) for url in request_urls]
-        for future in concurrent.futures.as_completed(future_names):
-            # Wait for all threads to complete
-            pass
+    # 画出目标最新边界区域
+    # 如果跟踪成功
+    if track_ok:
+        p1 = (int(bbox[0]), int(bbox[1]))
+        p2 = (int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3]))
 
-    tl.stop()
+        cv2.rectangle(frame, p1, p2, (255, 0, 0), 2, 1)
+        print(int(bbox[0] + bbox[2] / 2), int(bbox[1] + bbox[3] / 2))
+    elif not track_start:
+        cv2.putText(frame, "No tracking target selected", (100, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
+    elif not track_ok:
+        cv2.putText(frame, "Tracking failure detected", (100, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
+
+    # 显示提示信息
+    cv2.putText(frame, "MIL Tracker", (100, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
+    cv2.putText(frame, "FPS : " + str(int(fps)), (100, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50, 170, 50), 2)
+
+    # 显示结果
+    cv2.imshow("KCFTracker", frame)
+
+    # 按ESC退出
+    k = cv2.waitKey(100) & 0xff
+    if k == 27:
+        break
+
+# video.release()
+cv2.destroyAllWindows()
